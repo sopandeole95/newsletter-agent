@@ -17,7 +17,9 @@ export function summarize(htmlOrText: string, maxSentences = 5): string {
     .replace(/\n+/g, " ")
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 30 && s.length < 500);
+    .filter((s) => s.length > 30 && s.length < 500)
+    .filter((s) => !/https?:\/\/\S{50,}/.test(s)) // skip sentences with very long URLs
+    .filter((s) => !/__SENDX|cdn-cgi|beehiiv\.com\/cdn|utm_/i.test(s)); // skip tracking junk
 
   if (sentences.length <= maxSentences) {
     return sentences.join(" ");
@@ -44,7 +46,7 @@ function stripHtml(html: string): string {
   const $ = cheerio.load(html);
 
   // Remove non-content elements
-  $("script, style, head, nav, footer, img, svg, picture, video, audio, iframe").remove();
+  $("script, style, head, nav, footer, img, svg, picture, video, audio, iframe, figure, figcaption").remove();
   $(".unsubscribe, .footer, .email-footer, .mso, .preheader").remove();
   $("[style*='display:none'], [style*='display: none']").remove();
 
@@ -55,10 +57,23 @@ function stripHtml(html: string): string {
 
   let text = $("body").text();
   text = text
-    .replace(/\u200c/g, "")
+    .replace(/[\u200b\u200c\u200d\ufeff]/g, "")
     .replace(/\u00a0/g, " ")
-    .replace(/[\u200b\u200d\ufeff]/g, "")
+    // Remove tracking tokens
+    .replace(/__SENDX_TRACK_START__[^_]*__SENDX_TRACK_END__/g, "")
+    .replace(/__SENDX_\w+__/g, "")
+    // Remove image-related lines
+    .replace(/View image:?\s*\(https?:\/\/[^\)]+\)/gi, "")
+    .replace(/Follow image link:?\s*\(https?:\/\/[^\)]+\)/gi, "")
+    .replace(/Image showing[^.]*\(https?:\/\/[^\)]+\)/gi, "")
+    .replace(/Caption:\s*/gi, "")
     .replace(/\[image[^\]]*\]/gi, "")
+    // Remove markdown artifacts
+    .replace(/\*{2,}/g, "")
+    .replace(/\^+/g, "")
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, "$1")
+    // Remove broken emoji
+    .replace(/[\u00d8]=[^\s]*/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
