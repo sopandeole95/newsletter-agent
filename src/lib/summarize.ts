@@ -43,10 +43,26 @@ export function summarize(htmlOrText: string, maxSentences = 5): string {
 function stripHtml(html: string): string {
   const $ = cheerio.load(html);
 
-  // Remove script, style, and hidden elements
-  $("script, style, head, nav, footer, .unsubscribe, .footer").remove();
+  // Remove non-content elements
+  $("script, style, head, nav, footer, img, svg, picture, video, audio, iframe").remove();
+  $(".unsubscribe, .footer, .email-footer, .mso, .preheader").remove();
+  $("[style*='display:none'], [style*='display: none']").remove();
 
-  return $("body").text().replace(/\s+/g, " ").trim();
+  // Replace links with just their text (no URLs needed for summarization)
+  $("a").each((_, el) => {
+    $(el).replaceWith($(el).text());
+  });
+
+  let text = $("body").text();
+  text = text
+    .replace(/\u200c/g, "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u200b\u200d\ufeff]/g, "")
+    .replace(/\[image[^\]]*\]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text;
 }
 
 function getWordFrequency(text: string): Map<string, number> {

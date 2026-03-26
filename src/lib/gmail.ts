@@ -19,11 +19,15 @@ export async function fetchNewsletterEmails(since?: Date): Promise<EmailMessage[
 
   if (senders.length === 0) return [];
 
-  // Build query: from any of the senders, received after the given date
+  // Build query: from any of the senders, received today or yesterday
+  // Gmail's after: uses day granularity, so go back 1 extra day to avoid missing emails near midnight
   const fromQuery = senders.map((s) => `from:${s}`).join(" OR ");
   const afterDate = since || new Date(new Date().setHours(0, 0, 0, 0));
-  const afterStr = Math.floor(afterDate.getTime() / 1000);
-  const query = `(${fromQuery}) after:${afterStr}`;
+  const safeDate = new Date(afterDate.getTime() - 24 * 60 * 60 * 1000); // 1 day earlier
+  const yyyy = safeDate.getFullYear();
+  const mm = String(safeDate.getMonth() + 1).padStart(2, "0");
+  const dd = String(safeDate.getDate()).padStart(2, "0");
+  const query = `(${fromQuery}) after:${yyyy}/${mm}/${dd}`;
 
   const res = await gmail.users.messages.list({
     userId: "me",

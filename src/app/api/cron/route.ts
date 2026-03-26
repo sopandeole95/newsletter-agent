@@ -88,6 +88,43 @@ export async function GET(request: NextRequest) {
 function stripHtml(html: string): string {
   if (!html) return "";
   const $ = cheerio.load(html);
-  $("script, style, head").remove();
-  return $("body").text().replace(/\s+/g, " ").trim();
+
+  // Remove non-content elements
+  $("script, style, head, nav, footer, img, svg, picture, video, audio, iframe").remove();
+  $(".unsubscribe, .footer, .email-footer, .mso, .preheader").remove();
+  $("[style*='display:none'], [style*='display: none']").remove();
+
+  // Convert meaningful links: keep link text with URL in parentheses if the URL looks useful
+  $("a").each((_, el) => {
+    const $a = $(el);
+    const href = $a.attr("href") || "";
+    const text = $a.text().trim();
+
+    // Skip tracking links, unsubscribe links, and image-only links
+    const isTrackingLink = /click\.|track\.|unsubscribe|manage.*preferences|list-manage|mailchimp|sendgrid|beehiiv.*\/p\//i.test(href);
+    const isImageLink = !text || text.length < 2;
+
+    if (isTrackingLink || isImageLink) {
+      $a.replaceWith(text);
+    } else if (href && !href.startsWith("mailto:") && text !== href) {
+      // Keep meaningful links like "Google (www.google.com)"
+      $a.replaceWith(`${text} (${href})`);
+    } else {
+      $a.replaceWith(text);
+    }
+  });
+
+  // Get text and clean up
+  let text = $("body").text();
+
+  // Remove common email artifacts
+  text = text
+    .replace(/\u200c/g, "") // zero-width non-joiner
+    .replace(/\u00a0/g, " ") // non-breaking space
+    .replace(/[\u200b\u200d\ufeff]/g, "") // other zero-width chars
+    .replace(/\[image[^\]]*\]/gi, "") // [image] placeholders
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text;
 }
