@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@types/cheerio": "^0.22.35",
-    "@vercel/kv": "^3.0.0",
     "cheerio": "^1.2.0",
     "googleapis": "^171.4.0",
     "html-pdf-node": "^1.0.8",
@@ -18,7 +17,8 @@
     "jspdf-autotable": "^5.0.7",
     "next": "16.2.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "redis": "^5.11.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

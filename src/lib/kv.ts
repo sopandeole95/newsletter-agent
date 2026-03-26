@@ -1,16 +1,36 @@
-import { kv } from "@vercel/kv";
+import { createClient } from "redis";
+
+function getClient() {
+  const client = createClient({ url: process.env.REDIS_URL });
+  client.on("error", (err) => console.error("Redis error:", err));
+  return client;
+}
+
+async function withRedis<T>(fn: (client: ReturnType<typeof createClient>) => Promise<T>): Promise<T> {
+  const client = getClient();
+  await client.connect();
+  try {
+    return await fn(client);
+  } finally {
+    await client.disconnect();
+  }
+}
 
 const PROCESSED_PREFIX = "processed:";
 const NEWSLETTER_PREFIX = "newsletter:";
 
 export async function isProcessed(emailId: string): Promise<boolean> {
-  const result = await kv.get(`${PROCESSED_PREFIX}${emailId}`);
-  return result !== null;
+  return withRedis(async (client) => {
+    const result = await client.get(`${PROCESSED_PREFIX}${emailId}`);
+    return result !== null;
+  });
 }
 
 export async function markProcessed(emailId: string): Promise<void> {
-  // Expire after 7 days to keep KV store clean
-  await kv.set(`${PROCESSED_PREFIX}${emailId}`, true, { ex: 7 * 24 * 60 * 60 });
+  await withRedis(async (client) => {
+    // Expire after 7 days to keep store clean
+    await client.set(`${PROCESSED_PREFIX}${emailId}`, "true", { EX: 7 * 24 * 60 * 60 });
+  });
 }
 
 export interface NewsletterRecord {
@@ -24,34 +44,44 @@ export interface NewsletterRecord {
 }
 
 export async function saveNewsletterRecord(record: NewsletterRecord): Promise<void> {
-  const today = new Date().toISOString().split("T")[0];
-  const key = `${NEWSLETTER_PREFIX}${today}`;
+  await withRedis(async (client) => {
+    const today = new Date().toISOString().split("T")[0];
+    const key = `${NEWSLETTER_PREFIX}${today}`;
 
-  // Get existing records for today
-  const existing = (await kv.get<NewsletterRecord[]>(key)) || [];
-  existing.push(record);
+    // Get existing records for today
+    const raw = await client.get(key);
+    const existing: NewsletterRecord[] = raw ? JSON.parse(raw) : [];
+    existing.push(record);
 
-  // Store with 7-day expiry
-  await kv.set(key, existing, { ex: 7 * 24 * 60 * 60 });
+    // Store with 7-day expiry
+    await client.set(key, JSON.stringify(existing), { EX: 7 * 24 * 60 * 60 });
+  });
 }
 
 export async function getNewslettersForDate(date: string): Promise<NewsletterRecord[]> {
-  const key = `${NEWSLETTER_PREFIX}${date}`;
-  return (await kv.get<NewsletterRecord[]>(key)) || [];
+  return withRedis(async (client) => {
+    const key = `${NEWSLETTER_PREFIX}${date}`;
+    const raw = await client.get(key);
+    return raw ? JSON.parse(raw) : [];
+  });
 }
 
 export async function getRecentNewsletters(days = 7): Promise<Record<string, NewsletterRecord[]>> {
-  const result: Record<string, NewsletterRecord[]> = {};
+  return withRedis(async (client) => {
+    const result: Record<string, NewsletterRecord[]> = {};
 
-  for (let i = 0; i < days; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split("T")[0];
-    const records = await getNewslettersForDate(dateStr);
-    if (records.length > 0) {
-      result[dateStr] = records;
+    for (let i = 0; i < days; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split("T")[0];
+      const key = `${NEWSLETTER_PREFIX}${dateStr}`;
+      const raw = await client.get(key);
+      const records: NewsletterRecord[] = raw ? JSON.parse(raw) : [];
+      if (records.length > 0) {
+        result[dateStr] = records;
+      }
     }
-  }
 
-  return result;
+    return result;
+  });
 }
