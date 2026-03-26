@@ -44,6 +44,10 @@ export default function Home() {
         headers: { Authorization: `Bearer ${prompt("Enter your CRON_SECRET:")}` },
       });
       const data = await res.json();
+      if (!res.ok) {
+        alert(`Error (${res.status}): ${data.error || JSON.stringify(data)}`);
+        return;
+      }
       alert(`Processed: ${data.processed}, Skipped: ${data.skipped}`);
       // Refresh newsletters
       const nlRes = await fetch("/api/newsletters");
